@@ -1,91 +1,100 @@
-#pragma once
-
 #if defined(USE_ESP32_VARIANT_ESP32P4) || defined(USE_ESP32_VARIANT_ESP32S2) || \
     defined(USE_ESP32_VARIANT_ESP32S3) || defined(USE_ESP32_VARIANT_ESP32S31) || \
     defined(USE_ESP32_VARIANT_ESP32H4)
 
-#include "esphome/core/component.h"
+#include "tinyusb_component.h"
 
-#include "tinyusb.h"
-#include "tusb.h"
+#include "esphome/core/helpers.h"
+#include "esphome/core/log.h"
+#include "tinyusb_default_config.h"
+
+#include "../usb_hid_mouse/usb_hid_mouse.h"
 
 namespace esphome::tinyusb {
 
-enum USBDStringDescriptor : uint8_t {
-  LANGUAGE_ID = 0,
-  MANUFACTURER = 1,
-  PRODUCT = 2,
-  SERIAL_NUMBER = 3,
-  INTERFACE = 4,
-  TERMINATOR = 5,
-  SIZE = 6,
-};
+static const char *const TAG = "tinyusb";
 
-static const char *const DEFAULT_USB_STR = "ESPHome";
-
-class TinyUSB final : public Component {
- public:
-  void setup() override;
-  void dump_config() override;
-  float get_setup_priority() const override { return setup_priority::BUS; }
-
-  void set_usb_desc_product_id(uint16_t product_id) {
-    this->usb_descriptor_.idProduct = product_id;
+void TinyUSB::setup() {
+  if (this->string_descriptor_[SERIAL_NUMBER] == nullptr) {
+    static char mac_addr_buf[MAC_ADDRESS_BUFFER_SIZE];
+    get_mac_address_into_buffer(mac_addr_buf);
+    this->string_descriptor_[SERIAL_NUMBER] = mac_addr_buf;
   }
 
-  void set_usb_desc_vendor_id(uint16_t vendor_id) {
-    this->usb_descriptor_.idVendor = vendor_id;
-  }
+  this->tusb_cfg_ = TINYUSB_DEFAULT_CONFIG();
+  this->tusb_cfg_.port = TINYUSB_PORT_FULL_SPEED_0;
+  this->tusb_cfg_.phy.skip_setup = false;
 
-  void set_usb_desc_lang_id(uint16_t lang_id) {
-    this->usb_desc_lang_id_[0] = lang_id & 0xFF;
-    this->usb_desc_lang_id_[1] = lang_id >> 8;
-  }
-
-  void set_usb_desc_manufacturer(const char *usb_desc_manufacturer) {
-    this->string_descriptor_[MANUFACTURER] = usb_desc_manufacturer;
-  }
-
-  void set_usb_desc_product(const char *usb_desc_product) {
-    this->string_descriptor_[PRODUCT] = usb_desc_product;
-  }
-
-  void set_usb_desc_serial(const char *usb_desc_serial) {
-    this->string_descriptor_[SERIAL_NUMBER] = usb_desc_serial;
-  }
-
- protected:
-  char usb_desc_lang_id_[2] = {0x09, 0x04};
-
-  const char *string_descriptor_[SIZE] = {
-      this->usb_desc_lang_id_,
-      DEFAULT_USB_STR,
-      DEFAULT_USB_STR,
-      nullptr,
-      nullptr,
-      nullptr,
+  this->tusb_cfg_.descriptor = {
+      .device = &this->usb_descriptor_,
+      .string = this->string_descriptor_,
+      .string_count = SIZE,
   };
 
-  tinyusb_config_t tusb_cfg_{};
+  this->tusb_cfg_.descriptor.full_speed_config =
+      esphome::usb_hid_mouse::configuration_descriptor;
 
-  tusb_desc_device_t usb_descriptor_{
-      .bLength = sizeof(tusb_desc_device_t),
-      .bDescriptorType = TUSB_DESC_DEVICE,
-      .bcdUSB = 0x0200,
-      .bDeviceClass = TUSB_CLASS_MISC,
-      .bDeviceSubClass = MISC_SUBCLASS_COMMON,
-      .bDeviceProtocol = MISC_PROTOCOL_IAD,
-      .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
-      .idVendor = 0x303A,
-      .idProduct = 0x4001,
-      .bcdDevice = CONFIG_TINYUSB_DESC_BCD_DEVICE,
-      .iManufacturer = 1,
-      .iProduct = 2,
-      .iSerialNumber = 3,
-      .bNumConfigurations = 1,
-  };
-};
+  esp_err_t result = tinyusb_driver_install(&this->tusb_cfg_);
+
+  if (result != ESP_OK) {
+    ESP_LOGE(TAG, "tinyusb_driver_install failed: %s", esp_err_to_name(result));
+    this->mark_failed();
+  }
+}
+
+void TinyUSB::dump_config() {
+  ESP_LOGCONFIG(TAG,
+                "TinyUSB:\n"
+                "  Product ID: 0x%04X\n"
+                "  Vendor ID: 0x%04X\n"
+                "  Manufacturer: '%s'\n"
+                "  Product: '%s'\n"
+                "  Serial: '%s'\n",
+                this->usb_descriptor_.idProduct,
+                this->usb_descriptor_.idVendor,
+                this->string_descriptor_[MANUFACTURER],
+                this->string_descriptor_[PRODUCT],
+                this->string_descriptor_[SERIAL_NUMBER]);
+}
 
 }  // namespace esphome::tinyusb
+
+
+extern "C" {
+
+uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance) {
+  (void) instance;
+  return esphome::usb_hid_mouse::hid_report_descriptor;
+}
+
+uint16_t tud_hid_get_report_cb(
+    uint8_t instance,
+    uint8_t report_id,
+    hid_report_type_t report_type,
+    uint8_t *buffer,
+    uint16_t reqlen) {
+  (void) instance;
+  (void) report_id;
+  (void) report_type;
+  (void) buffer;
+  (void) reqlen;
+
+  return 0;
+}
+
+void tud_hid_set_report_cb(
+    uint8_t instance,
+    uint8_t report_id,
+    hid_report_type_t report_type,
+    uint8_t const *buffer,
+    uint16_t bufsize) {
+  (void) instance;
+  (void) report_id;
+  (void) report_type;
+  (void) buffer;
+  (void) bufsize;
+}
+
+}
 
 #endif
