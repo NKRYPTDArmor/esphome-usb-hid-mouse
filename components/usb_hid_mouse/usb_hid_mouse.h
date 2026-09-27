@@ -77,11 +77,6 @@ class USBHIDMouse : public Component {
 
 extern "C" {
 
-uint8_t const *tud_descriptor_configuration_cb(uint8_t index) {
-  (void) index;
-  return esphome::usb_hid_mouse::configuration_descriptor;
-}
-
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance) {
   (void) instance;
   return esphome::usb_hid_mouse::hid_report_descriptor;
