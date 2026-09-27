@@ -32,6 +32,9 @@ class TinyUSB final : public Component {
     return setup_priority::BUS;
   }
 
+  // Send relative mouse movement.
+  bool move_mouse(int8_t x, int8_t y);
+
   void set_usb_desc_product_id(uint16_t product_id) {
     this->usb_descriptor_.idProduct = product_id;
   }
