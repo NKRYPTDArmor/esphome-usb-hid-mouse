@@ -8,11 +8,83 @@
 #include "esphome/core/log.h"
 #include "tinyusb_default_config.h"
 
-#include "../usb_hid_mouse/usb_hid_mouse.h"
-
 namespace esphome::tinyusb {
 
 static const char *const TAG = "tinyusb";
+
+// -----------------------------------------------------------------------------
+// HID mouse report descriptor
+// -----------------------------------------------------------------------------
+
+static const uint8_t HID_REPORT_DESCRIPTOR[] = {
+    TUD_HID_REPORT_DESC_MOUSE()
+};
+
+// -----------------------------------------------------------------------------
+// USB interface numbers
+//
+// CDC requires two interfaces:
+//   0 = CDC control
+//   1 = CDC data
+//
+// HID mouse uses:
+//   2 = HID
+// -----------------------------------------------------------------------------
+
+enum {
+  ITF_NUM_CDC = 0,
+  ITF_NUM_CDC_DATA,
+  ITF_NUM_HID,
+  ITF_NUM_TOTAL
+};
+
+// -----------------------------------------------------------------------------
+// Endpoint addresses
+// -----------------------------------------------------------------------------
+
+#define EPNUM_CDC_NOTIF 0x81
+#define EPNUM_CDC_OUT   0x02
+#define EPNUM_CDC_IN    0x82
+#define EPNUM_HID_IN    0x83
+
+// -----------------------------------------------------------------------------
+// Complete CDC + HID configuration descriptor
+// -----------------------------------------------------------------------------
+
+#define CONFIG_TOTAL_LEN \
+  (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + TUD_HID_DESC_LEN)
+
+static const uint8_t CONFIGURATION_DESCRIPTOR[] = {
+    TUD_CONFIG_DESCRIPTOR(
+        1,
+        ITF_NUM_TOTAL,
+        0,
+        CONFIG_TOTAL_LEN,
+        0,
+        100),
+
+    TUD_CDC_DESCRIPTOR(
+        ITF_NUM_CDC,
+        4,
+        EPNUM_CDC_NOTIF,
+        8,
+        EPNUM_CDC_OUT,
+        EPNUM_CDC_IN,
+        CFG_TUD_CDC_EP_BUFSIZE),
+
+    TUD_HID_DESCRIPTOR(
+        ITF_NUM_HID,
+        0,
+        HID_ITF_PROTOCOL_MOUSE,
+        sizeof(HID_REPORT_DESCRIPTOR),
+        EPNUM_HID_IN,
+        CFG_TUD_HID_EP_BUFSIZE,
+        10),
+};
+
+// -----------------------------------------------------------------------------
+// ESPHome TinyUSB component
+// -----------------------------------------------------------------------------
 
 void TinyUSB::setup() {
   if (this->string_descriptor_[SERIAL_NUMBER] == nullptr) {
@@ -22,6 +94,7 @@ void TinyUSB::setup() {
   }
 
   this->tusb_cfg_ = TINYUSB_DEFAULT_CONFIG();
+
   this->tusb_cfg_.port = TINYUSB_PORT_FULL_SPEED_0;
   this->tusb_cfg_.phy.skip_setup = false;
 
@@ -31,40 +104,60 @@ void TinyUSB::setup() {
       .string_count = SIZE,
   };
 
+  // Supply our CDC + HID descriptor instead of esp_tinyusb's
+  // automatically generated CDC-only descriptor.
   this->tusb_cfg_.descriptor.full_speed_config =
-      esphome::usb_hid_mouse::configuration_descriptor;
+      CONFIGURATION_DESCRIPTOR;
 
   esp_err_t result = tinyusb_driver_install(&this->tusb_cfg_);
 
   if (result != ESP_OK) {
-    ESP_LOGE(TAG, "tinyusb_driver_install failed: %s", esp_err_to_name(result));
+    ESP_LOGE(
+        TAG,
+        "tinyusb_driver_install failed: %s",
+        esp_err_to_name(result)
+    );
+
     this->mark_failed();
+    return;
   }
+
+  ESP_LOGI(TAG, "TinyUSB CDC + HID mouse initialized");
 }
 
 void TinyUSB::dump_config() {
-  ESP_LOGCONFIG(TAG,
-                "TinyUSB:\n"
-                "  Product ID: 0x%04X\n"
-                "  Vendor ID: 0x%04X\n"
-                "  Manufacturer: '%s'\n"
-                "  Product: '%s'\n"
-                "  Serial: '%s'\n",
-                this->usb_descriptor_.idProduct,
-                this->usb_descriptor_.idVendor,
-                this->string_descriptor_[MANUFACTURER],
-                this->string_descriptor_[PRODUCT],
-                this->string_descriptor_[SERIAL_NUMBER]);
+  ESP_LOGCONFIG(
+      TAG,
+      "TinyUSB:\n"
+      "  Product ID: 0x%04X\n"
+      "  Vendor ID: 0x%04X\n"
+      "  Manufacturer: '%s'\n"
+      "  Product: '%s'\n"
+      "  Serial: '%s'\n"
+      "  USB classes: CDC + HID mouse",
+      this->usb_descriptor_.idProduct,
+      this->usb_descriptor_.idVendor,
+      this->string_descriptor_[MANUFACTURER],
+      this->string_descriptor_[PRODUCT],
+      this->string_descriptor_[SERIAL_NUMBER]
+  );
 }
 
 }  // namespace esphome::tinyusb
 
 
+// -----------------------------------------------------------------------------
+// TinyUSB HID callbacks
+//
+// These must have C linkage because TinyUSB itself is C.
+// -----------------------------------------------------------------------------
+
 extern "C" {
 
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance) {
   (void) instance;
-  return esphome::usb_hid_mouse::hid_report_descriptor;
+
+  return esphome::tinyusb::HID_REPORT_DESCRIPTOR;
 }
 
 uint16_t tud_hid_get_report_cb(
@@ -73,11 +166,13 @@ uint16_t tud_hid_get_report_cb(
     hid_report_type_t report_type,
     uint8_t *buffer,
     uint16_t reqlen) {
+
   (void) instance;
   (void) report_id;
   (void) report_type;
   (void) buffer;
   (void) reqlen;
+
   return 0;
 }
 
@@ -87,6 +182,7 @@ void tud_hid_set_report_cb(
     hid_report_type_t report_type,
     uint8_t const *buffer,
     uint16_t bufsize) {
+
   (void) instance;
   (void) report_id;
   (void) report_type;
