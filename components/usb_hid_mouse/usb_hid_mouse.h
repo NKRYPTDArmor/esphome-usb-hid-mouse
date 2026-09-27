@@ -13,8 +13,8 @@ static const uint8_t hid_report_descriptor[] = {
 };
 
 // Interface numbering:
-// CDC consumes TWO interfaces: control + data.
-// HID is the third interface.
+// CDC uses two interfaces: control + data.
+// HID uses the third interface.
 enum {
   ITF_NUM_CDC = 0,
   ITF_NUM_CDC_DATA,
@@ -30,7 +30,7 @@ enum {
 #define CONFIG_TOTAL_LEN \
   (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + TUD_HID_DESC_LEN)
 
-// Composite configuration: CDC serial + HID mouse
+// Composite USB configuration: CDC serial + HID mouse
 static const uint8_t configuration_descriptor[] = {
     TUD_CONFIG_DESCRIPTOR(
         1,
@@ -66,7 +66,6 @@ class USBHIDMouse : public Component {
   }
 
   void loop() override {
-    // Still intentionally empty.
     // No mouse movement yet.
   }
 };
@@ -77,36 +76,20 @@ class USBHIDMouse : public Component {
 
 extern "C" {
 
-inline uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance) {
-  (void) instance;
-  return esphome::usb_hid_mouse::hid_report_descriptor;
-}
+uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance);
 
-inline uint16_t tud_hid_get_report_cb(
+uint16_t tud_hid_get_report_cb(
     uint8_t instance,
     uint8_t report_id,
     hid_report_type_t report_type,
     uint8_t *buffer,
-    uint16_t reqlen) {
-  (void) instance;
-  (void) report_id;
-  (void) report_type;
-  (void) buffer;
-  (void) reqlen;
-  return 0;
-}
+    uint16_t reqlen);
 
-inline void tud_hid_set_report_cb(
+void tud_hid_set_report_cb(
     uint8_t instance,
     uint8_t report_id,
     hid_report_type_t report_type,
     uint8_t const *buffer,
-    uint16_t bufsize) {
-  (void) instance;
-  (void) report_id;
-  (void) report_type;
-  (void) buffer;
-  (void) bufsize;
-}
+    uint16_t bufsize);
 
 }
