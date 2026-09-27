@@ -75,6 +75,35 @@ void TinyUSB::setup() {
   ESP_LOGI(TAG, "TinyUSB HID-only mouse initialized");
 }
 
+bool TinyUSB::move_mouse(int8_t x, int8_t y) {
+  if (!tud_mounted()) {
+    ESP_LOGW(TAG, "Mouse move ignored: USB is not mounted");
+    return false;
+  }
+
+  if (!tud_hid_ready()) {
+    ESP_LOGW(TAG, "Mouse move ignored: HID interface is not ready");
+    return false;
+  }
+
+  bool sent = tud_hid_mouse_report(
+      0,   // report ID
+      0,   // buttons
+      x,   // relative X
+      y,   // relative Y
+      0,   // vertical wheel
+      0    // horizontal pan
+  );
+
+  if (sent) {
+    ESP_LOGD(TAG, "Mouse movement sent: x=%d y=%d", x, y);
+  } else {
+    ESP_LOGW(TAG, "TinyUSB rejected mouse report");
+  }
+
+  return sent;
+}
+
 void TinyUSB::dump_config() {
   ESP_LOGCONFIG(TAG,
                 "TinyUSB:\n"
