@@ -5,12 +5,11 @@ CONFIG_SCHEMA = cv.Schema({})
 
 
 async def to_code(config):
-    # Enable one TinyUSB CDC-ACM interface.
+    # Compile one CDC-ACM interface into TinyUSB.
     esp32.add_idf_sdkconfig_option("CONFIG_TINYUSB_CDC_ENABLED", True)
     esp32.add_idf_sdkconfig_option("CONFIG_TINYUSB_CDC_COUNT", 1)
     esp32.add_idf_sdkconfig_option("CONFIG_TINYUSB_CDC_RX_BUFSIZE", 256)
     esp32.add_idf_sdkconfig_option("CONFIG_TINYUSB_CDC_TX_BUFSIZE", 256)
 
-    # Enable one TinyUSB HID interface for the mouse.
-    esp32.add_idf_sdkconfig_option("CONFIG_TINYUSB_HID_ENABLED", True)
+    # A HID count greater than zero enables TinyUSB HID.
     esp32.add_idf_sdkconfig_option("CONFIG_TINYUSB_HID_COUNT", 1)
