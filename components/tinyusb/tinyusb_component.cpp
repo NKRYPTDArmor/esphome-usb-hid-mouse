@@ -15,16 +15,13 @@ namespace esphome::tinyusb {
 static const char *const TAG = "tinyusb";
 
 void TinyUSB::setup() {
-  // Use the device MAC address as its serial number if none was specified.
   if (this->string_descriptor_[SERIAL_NUMBER] == nullptr) {
     static char mac_addr_buf[MAC_ADDRESS_BUFFER_SIZE];
     get_mac_address_into_buffer(mac_addr_buf);
     this->string_descriptor_[SERIAL_NUMBER] = mac_addr_buf;
   }
 
-  // Start from the standard esp_tinyusb configuration.
   this->tusb_cfg_ = TINYUSB_DEFAULT_CONFIG();
-
   this->tusb_cfg_.port = TINYUSB_PORT_FULL_SPEED_0;
   this->tusb_cfg_.phy.skip_setup = false;
 
@@ -34,7 +31,6 @@ void TinyUSB::setup() {
       .string_count = SIZE,
   };
 
-  // Use our composite CDC + HID mouse configuration descriptor.
   this->tusb_cfg_.descriptor.full_speed_config =
       esphome::usb_hid_mouse::configuration_descriptor;
 
@@ -62,5 +58,42 @@ void TinyUSB::dump_config() {
 }
 
 }  // namespace esphome::tinyusb
+
+
+extern "C" {
+
+uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance) {
+  (void) instance;
+  return esphome::usb_hid_mouse::hid_report_descriptor;
+}
+
+uint16_t tud_hid_get_report_cb(
+    uint8_t instance,
+    uint8_t report_id,
+    hid_report_type_t report_type,
+    uint8_t *buffer,
+    uint16_t reqlen) {
+  (void) instance;
+  (void) report_id;
+  (void) report_type;
+  (void) buffer;
+  (void) reqlen;
+  return 0;
+}
+
+void tud_hid_set_report_cb(
+    uint8_t instance,
+    uint8_t report_id,
+    hid_report_type_t report_type,
+    uint8_t const *buffer,
+    uint16_t bufsize) {
+  (void) instance;
+  (void) report_id;
+  (void) report_type;
+  (void) buffer;
+  (void) bufsize;
+}
+
+}
 
 #endif
