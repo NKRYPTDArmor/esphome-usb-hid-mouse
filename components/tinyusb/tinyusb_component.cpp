@@ -13,7 +13,8 @@ namespace esphome::tinyusb {
 static const char *const TAG = "tinyusb";
 
 static const uint8_t HID_REPORT_DESCRIPTOR[] = {
-    TUD_HID_REPORT_DESC_MOUSE()
+    TUD_HID_REPORT_DESC_MOUSE(HID_REPORT_ID(1)),
+    TUD_HID_REPORT_DESC_KEYBOARD(HID_REPORT_ID(2))
 };
 
 enum {
@@ -87,7 +88,7 @@ bool TinyUSB::move_mouse(int8_t x, int8_t y) {
   }
 
   bool sent = tud_hid_mouse_report(
-      0,   // report ID
+      1,   // report ID
       0,   // buttons
       x,   // relative X
       y,   // relative Y
@@ -103,7 +104,44 @@ bool TinyUSB::move_mouse(int8_t x, int8_t y) {
 
   return sent;
 }
+bool TinyUSB::send_key(uint8_t modifier, uint8_t keycode) {
+  if (!tud_mounted()) {
+    ESP_LOGW(TAG, "Key ignored: USB is not mounted");
+    return false;
+  }
 
+  if (!tud_hid_ready()) {
+    ESP_LOGW(TAG, "Key ignored: HID interface is not ready");
+    return false;
+  }
+
+  uint8_t keycodes[6] = {keycode, 0, 0, 0, 0, 0};
+
+  // Press the key.
+  bool sent = tud_hid_keyboard_report(
+      2,          // report ID - keyboard
+      modifier,
+      keycodes
+  );
+
+  if (!sent) {
+    ESP_LOGW(TAG, "TinyUSB rejected keyboard report");
+    return false;
+  }
+
+  // Give the host time to process the key press.
+  delay(10);
+
+  // Release all keys.
+  uint8_t empty_keys[6] = {0, 0, 0, 0, 0, 0};
+  tud_hid_keyboard_report(
+      2,          // report ID - keyboard
+      0,
+      empty_keys
+  );
+
+  return true;
+}
 void TinyUSB::dump_config() {
   ESP_LOGCONFIG(TAG,
                 "TinyUSB:\n"
