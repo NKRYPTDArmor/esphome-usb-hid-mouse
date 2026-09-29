@@ -73,7 +73,7 @@ void TinyUSB::setup() {
     return;
   }
 
-  ESP_LOGI(TAG, "TinyUSB HID-only mouse initialized");
+  ESP_LOGI(TAG, "TinyUSB HID mouse + keyboard initialized");
 }
 
 bool TinyUSB::move_mouse(int8_t x, int8_t y) {
@@ -150,7 +150,7 @@ void TinyUSB::dump_config() {
                 "  Manufacturer: '%s'\n"
                 "  Product: '%s'\n"
                 "  Serial: '%s'\n"
-                "  USB classes: HID mouse only",
+                "  USB classes: HID mouse + keyboard",
                 this->usb_descriptor_.idProduct,
                 this->usb_descriptor_.idVendor,
                 this->string_descriptor_[MANUFACTURER],
