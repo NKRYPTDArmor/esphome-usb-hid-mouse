@@ -142,6 +142,144 @@ bool TinyUSB::send_key(uint8_t modifier, uint8_t keycode) {
 
   return true;
 }
+
+bool TinyUSB::type_text(const std::string &text) {
+  for (char c : text) {
+    uint8_t modifier = 0;
+    uint8_t keycode = 0;
+
+    if (c >= 'a' && c <= 'z') {
+      keycode = HID_KEY_A + (c - 'a');
+    } else if (c >= 'A' && c <= 'Z') {
+      keycode = HID_KEY_A + (c - 'A');
+      modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+    } else if (c >= '1' && c <= '9') {
+      keycode = HID_KEY_1 + (c - '1');
+    } else if (c == '0') {
+      keycode = HID_KEY_0;
+    } else {
+      switch (c) {
+        case ' ': keycode = HID_KEY_SPACE; break;
+        case '\n': keycode = HID_KEY_ENTER; break;
+        case '\t': keycode = HID_KEY_TAB; break;
+
+        case '-': keycode = HID_KEY_MINUS; break;
+        case '_':
+          keycode = HID_KEY_MINUS;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+
+        case '=': keycode = HID_KEY_EQUAL; break;
+        case '+':
+          keycode = HID_KEY_EQUAL;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+
+        case '[': keycode = HID_KEY_BRACKET_LEFT; break;
+        case '{':
+          keycode = HID_KEY_BRACKET_LEFT;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+
+        case ']': keycode = HID_KEY_BRACKET_RIGHT; break;
+        case '}':
+          keycode = HID_KEY_BRACKET_RIGHT;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+
+        case '\\': keycode = HID_KEY_BACKSLASH; break;
+        case '|':
+          keycode = HID_KEY_BACKSLASH;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+
+        case ';': keycode = HID_KEY_SEMICOLON; break;
+        case ':':
+          keycode = HID_KEY_SEMICOLON;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+
+        case '\'': keycode = HID_KEY_APOSTROPHE; break;
+        case '"':
+          keycode = HID_KEY_APOSTROPHE;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+
+        case ',': keycode = HID_KEY_COMMA; break;
+        case '<':
+          keycode = HID_KEY_COMMA;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+
+        case '.': keycode = HID_KEY_PERIOD; break;
+        case '>':
+          keycode = HID_KEY_PERIOD;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+
+        case '/': keycode = HID_KEY_SLASH; break;
+        case '?':
+          keycode = HID_KEY_SLASH;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+
+        case '!':
+          keycode = HID_KEY_1;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+        case '@':
+          keycode = HID_KEY_2;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+        case '#':
+          keycode = HID_KEY_3;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+        case '$':
+          keycode = HID_KEY_4;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+        case '%':
+          keycode = HID_KEY_5;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+        case '^':
+          keycode = HID_KEY_6;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+        case '&':
+          keycode = HID_KEY_7;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+        case '*':
+          keycode = HID_KEY_8;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+        case '(':
+          keycode = HID_KEY_9;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+        case ')':
+          keycode = HID_KEY_0;
+          modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+          break;
+
+        default:
+          ESP_LOGW(TAG, "Unsupported character skipped");
+          continue;
+      }
+    }
+
+    if (!this->send_key(modifier, keycode)) {
+      return false;
+    }
+
+    delay(5);
+  }
+
+  return true;
+}
+
 void TinyUSB::dump_config() {
   ESP_LOGCONFIG(TAG,
                 "TinyUSB:\n"
