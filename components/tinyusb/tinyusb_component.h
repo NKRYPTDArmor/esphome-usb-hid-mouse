@@ -6,6 +6,8 @@
 
 #include "esphome/core/component.h"
 
+#include <string>
+
 #include "tinyusb.h"
 #include "tusb.h"
 
@@ -37,6 +39,9 @@ class TinyUSB final : public Component {
 
   // Send a USB keyboard key press and release.
   bool send_key(uint8_t modifier, uint8_t keycode);
+
+  // Type an ASCII text string as USB keyboard input.
+  bool type_text(const std::string &text);
 
   void set_usb_desc_product_id(uint16_t product_id) {
     this->usb_descriptor_.idProduct = product_id;
