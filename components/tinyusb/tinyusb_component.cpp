@@ -12,6 +12,8 @@ namespace esphome::tinyusb {
 
 static const char *const TAG = "tinyusb";
 
+// Report 1 = mouse
+// Report 2 = keyboard
 static const uint8_t HID_REPORT_DESCRIPTOR[] = {
     TUD_HID_REPORT_DESC_MOUSE(HID_REPORT_ID(1)),
     TUD_HID_REPORT_DESC_KEYBOARD(HID_REPORT_ID(2))
@@ -68,27 +70,48 @@ void TinyUSB::setup() {
   esp_err_t result = tinyusb_driver_install(&this->tusb_cfg_);
 
   if (result != ESP_OK) {
-    ESP_LOGE(TAG, "tinyusb_driver_install failed: %s", esp_err_to_name(result));
+    ESP_LOGE(
+        TAG,
+        "tinyusb_driver_install failed: %s",
+        esp_err_to_name(result)
+    );
+
     this->mark_failed();
     return;
   }
 
-  ESP_LOGI(TAG, "TinyUSB HID mouse + keyboard initialized");
+  ESP_LOGI(
+      TAG,
+      "TinyUSB HID mouse + keyboard initialized"
+  );
 }
+
+
+// ============================================================
+// MOUSE
+// ============================================================
 
 bool TinyUSB::move_mouse(int8_t x, int8_t y) {
   if (!tud_mounted()) {
-    ESP_LOGW(TAG, "Mouse move ignored: USB is not mounted");
+    ESP_LOGW(
+        TAG,
+        "Mouse move ignored: USB is not mounted"
+    );
+
     return false;
   }
 
   if (!tud_hid_ready()) {
-    ESP_LOGW(TAG, "Mouse move ignored: HID interface is not ready");
+    ESP_LOGW(
+        TAG,
+        "Mouse move ignored: HID interface is not ready"
+    );
+
     return false;
   }
 
   bool sent = tud_hid_mouse_report(
-      1,   // report ID
+      1,   // Report ID 1 = mouse
       0,   // buttons
       x,   // relative X
       y,   // relative Y
@@ -97,127 +120,284 @@ bool TinyUSB::move_mouse(int8_t x, int8_t y) {
   );
 
   if (sent) {
-    ESP_LOGD(TAG, "Mouse movement sent: x=%d y=%d", x, y);
+    ESP_LOGD(
+        TAG,
+        "Mouse movement sent: x=%d y=%d",
+        x,
+        y
+    );
   } else {
-    ESP_LOGW(TAG, "TinyUSB rejected mouse report");
+    ESP_LOGW(
+        TAG,
+        "TinyUSB rejected mouse report"
+    );
   }
 
   return sent;
 }
+
+
+// ============================================================
+// KEYBOARD - SINGLE KEY
+// ============================================================
+
 bool TinyUSB::send_key(uint8_t modifier, uint8_t keycode) {
   if (!tud_mounted()) {
-    ESP_LOGW(TAG, "Key ignored: USB is not mounted");
+    ESP_LOGW(
+        TAG,
+        "Key ignored: USB is not mounted"
+    );
+
     return false;
   }
 
-  if (!tud_hid_ready()) {
-    ESP_LOGW(TAG, "Key ignored: HID interface is not ready");
-    return false;
+  // ----------------------------------------------------------
+  // Wait until TinyUSB is ready for the KEY PRESS.
+  // ----------------------------------------------------------
+
+  uint32_t timeout = millis() + 100;
+
+  while (!tud_hid_ready()) {
+    if (millis() >= timeout) {
+      ESP_LOGW(
+          TAG,
+          "Keyboard press timed out waiting for HID"
+      );
+
+      return false;
+    }
+
+    delay(1);
   }
 
-  uint8_t keycodes[6] = {keycode, 0, 0, 0, 0, 0};
-
-  // Press the key.
-  bool sent = tud_hid_keyboard_report(
-      2,          // report ID - keyboard
-      modifier,
-      keycodes
-  );
-
-  if (!sent) {
-    ESP_LOGW(TAG, "TinyUSB rejected keyboard report");
-    return false;
-  }
-
-  // Give the host time to process the key press.
-  delay(10);
-
-  // Release all keys.
-  uint8_t empty_keys[6] = {0, 0, 0, 0, 0, 0};
-  tud_hid_keyboard_report(
-      2,          // report ID - keyboard
+  uint8_t keycodes[6] = {
+      keycode,
       0,
-      empty_keys
-  );
+      0,
+      0,
+      0,
+      0
+  };
+
+  // ----------------------------------------------------------
+  // Send KEY DOWN.
+  // ----------------------------------------------------------
+
+  if (!tud_hid_keyboard_report(
+          2,          // Report ID 2 = keyboard
+          modifier,
+          keycodes)) {
+
+    ESP_LOGW(
+        TAG,
+        "TinyUSB rejected keyboard press report"
+    );
+
+    return false;
+  }
+
+  // Give Windows time to process the key-down report.
+  delay(20);
+
+  // ----------------------------------------------------------
+  // Wait until TinyUSB is ready for KEY RELEASE.
+  // ----------------------------------------------------------
+
+  timeout = millis() + 100;
+
+  while (!tud_hid_ready()) {
+    if (millis() >= timeout) {
+      ESP_LOGW(
+          TAG,
+          "Keyboard release timed out waiting for HID"
+      );
+
+      return false;
+    }
+
+    delay(1);
+  }
+
+  uint8_t empty_keys[6] = {
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+  };
+
+  // ----------------------------------------------------------
+  // Send KEY UP.
+  // ----------------------------------------------------------
+
+  if (!tud_hid_keyboard_report(
+          2,          // Report ID 2 = keyboard
+          0,
+          empty_keys)) {
+
+    ESP_LOGW(
+        TAG,
+        "TinyUSB rejected keyboard release report"
+    );
+
+    return false;
+  }
+
+  // Small gap before another key is sent.
+  delay(20);
 
   return true;
 }
 
+
+// ============================================================
+// KEYBOARD - TYPE TEXT
+// ============================================================
+
 bool TinyUSB::type_text(const std::string &text) {
   for (char c : text) {
+
     uint8_t modifier = 0;
     uint8_t keycode = 0;
 
+    // --------------------------------------------------------
+    // Lowercase letters
+    // --------------------------------------------------------
+
     if (c >= 'a' && c <= 'z') {
       keycode = HID_KEY_A + (c - 'a');
-    } else if (c >= 'A' && c <= 'Z') {
+    }
+
+    // --------------------------------------------------------
+    // Uppercase letters
+    // --------------------------------------------------------
+
+    else if (c >= 'A' && c <= 'Z') {
       keycode = HID_KEY_A + (c - 'A');
       modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
-    } else if (c >= '1' && c <= '9') {
-      keycode = HID_KEY_1 + (c - '1');
-    } else if (c == '0') {
-      keycode = HID_KEY_0;
-    } else {
-      switch (c) {
-        case ' ': keycode = HID_KEY_SPACE; break;
-        case '\n': keycode = HID_KEY_ENTER; break;
-        case '\t': keycode = HID_KEY_TAB; break;
+    }
 
-        case '-': keycode = HID_KEY_MINUS; break;
+    // --------------------------------------------------------
+    // Numbers 1 through 9
+    // --------------------------------------------------------
+
+    else if (c >= '1' && c <= '9') {
+      keycode = HID_KEY_1 + (c - '1');
+    }
+
+    // --------------------------------------------------------
+    // Zero
+    // --------------------------------------------------------
+
+    else if (c == '0') {
+      keycode = HID_KEY_0;
+    }
+
+    // --------------------------------------------------------
+    // Everything else
+    // --------------------------------------------------------
+
+    else {
+      switch (c) {
+
+        case ' ':
+          keycode = HID_KEY_SPACE;
+          break;
+
+        case '\n':
+          keycode = HID_KEY_ENTER;
+          break;
+
+        case '\t':
+          keycode = HID_KEY_TAB;
+          break;
+
+        case '-':
+          keycode = HID_KEY_MINUS;
+          break;
+
         case '_':
           keycode = HID_KEY_MINUS;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
 
-        case '=': keycode = HID_KEY_EQUAL; break;
+        case '=':
+          keycode = HID_KEY_EQUAL;
+          break;
+
         case '+':
           keycode = HID_KEY_EQUAL;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
 
-        case '[': keycode = HID_KEY_BRACKET_LEFT; break;
+        case '[':
+          keycode = HID_KEY_BRACKET_LEFT;
+          break;
+
         case '{':
           keycode = HID_KEY_BRACKET_LEFT;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
 
-        case ']': keycode = HID_KEY_BRACKET_RIGHT; break;
+        case ']':
+          keycode = HID_KEY_BRACKET_RIGHT;
+          break;
+
         case '}':
           keycode = HID_KEY_BRACKET_RIGHT;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
 
-        case '\\': keycode = HID_KEY_BACKSLASH; break;
+        case '\\':
+          keycode = HID_KEY_BACKSLASH;
+          break;
+
         case '|':
           keycode = HID_KEY_BACKSLASH;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
 
-        case ';': keycode = HID_KEY_SEMICOLON; break;
+        case ';':
+          keycode = HID_KEY_SEMICOLON;
+          break;
+
         case ':':
           keycode = HID_KEY_SEMICOLON;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
 
-        case '\'': keycode = HID_KEY_APOSTROPHE; break;
+        case '\'':
+          keycode = HID_KEY_APOSTROPHE;
+          break;
+
         case '"':
           keycode = HID_KEY_APOSTROPHE;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
 
-        case ',': keycode = HID_KEY_COMMA; break;
+        case ',':
+          keycode = HID_KEY_COMMA;
+          break;
+
         case '<':
           keycode = HID_KEY_COMMA;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
 
-        case '.': keycode = HID_KEY_PERIOD; break;
+        case '.':
+          keycode = HID_KEY_PERIOD;
+          break;
+
         case '>':
           keycode = HID_KEY_PERIOD;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
 
-        case '/': keycode = HID_KEY_SLASH; break;
+        case '/':
+          keycode = HID_KEY_SLASH;
+          break;
+
         case '?':
           keycode = HID_KEY_SLASH;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
@@ -227,84 +407,121 @@ bool TinyUSB::type_text(const std::string &text) {
           keycode = HID_KEY_1;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
+
         case '@':
           keycode = HID_KEY_2;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
+
         case '#':
           keycode = HID_KEY_3;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
+
         case '$':
           keycode = HID_KEY_4;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
+
         case '%':
           keycode = HID_KEY_5;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
+
         case '^':
           keycode = HID_KEY_6;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
+
         case '&':
           keycode = HID_KEY_7;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
+
         case '*':
           keycode = HID_KEY_8;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
+
         case '(':
           keycode = HID_KEY_9;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
+
         case ')':
           keycode = HID_KEY_0;
           modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
           break;
 
         default:
-          ESP_LOGW(TAG, "Unsupported character skipped");
+          // Do not log the actual character.
+          ESP_LOGW(
+              TAG,
+              "Unsupported keyboard character skipped"
+          );
+
           continue;
       }
     }
 
-    if (!this->send_key(modifier, keycode)) {
+    // --------------------------------------------------------
+    // Send this character.
+    // --------------------------------------------------------
+
+    if (!this->send_key(
+            modifier,
+            keycode)) {
+
       return false;
     }
 
+    // Additional spacing between characters.
     delay(5);
   }
 
   return true;
 }
 
+
+// ============================================================
+// DIAGNOSTICS
+// ============================================================
+
 void TinyUSB::dump_config() {
-  ESP_LOGCONFIG(TAG,
-                "TinyUSB:\n"
-                "  Product ID: 0x%04X\n"
-                "  Vendor ID: 0x%04X\n"
-                "  Manufacturer: '%s'\n"
-                "  Product: '%s'\n"
-                "  Serial: '%s'\n"
-                "  USB classes: HID mouse + keyboard",
-                this->usb_descriptor_.idProduct,
-                this->usb_descriptor_.idVendor,
-                this->string_descriptor_[MANUFACTURER],
-                this->string_descriptor_[PRODUCT],
-                this->string_descriptor_[SERIAL_NUMBER]);
+  ESP_LOGCONFIG(
+      TAG,
+      "TinyUSB:\n"
+      "  Product ID: 0x%04X\n"
+      "  Vendor ID: 0x%04X\n"
+      "  Manufacturer: '%s'\n"
+      "  Product: '%s'\n"
+      "  Serial: '%s'\n"
+      "  USB classes: HID mouse + keyboard",
+      this->usb_descriptor_.idProduct,
+      this->usb_descriptor_.idVendor,
+      this->string_descriptor_[MANUFACTURER],
+      this->string_descriptor_[PRODUCT],
+      this->string_descriptor_[SERIAL_NUMBER]
+  );
 }
 
 }  // namespace esphome::tinyusb
 
 
+// ============================================================
+// TinyUSB callbacks
+// ============================================================
+
 extern "C" {
 
-uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance) {
+uint8_t const *tud_hid_descriptor_report_cb(
+    uint8_t instance) {
+
   (void) instance;
+
   return esphome::tinyusb::HID_REPORT_DESCRIPTOR;
 }
+
 
 uint16_t tud_hid_get_report_cb(
     uint8_t instance,
@@ -312,13 +529,16 @@ uint16_t tud_hid_get_report_cb(
     hid_report_type_t report_type,
     uint8_t *buffer,
     uint16_t reqlen) {
+
   (void) instance;
   (void) report_id;
   (void) report_type;
   (void) buffer;
   (void) reqlen;
+
   return 0;
 }
+
 
 void tud_hid_set_report_cb(
     uint8_t instance,
@@ -326,6 +546,7 @@ void tud_hid_set_report_cb(
     hid_report_type_t report_type,
     uint8_t const *buffer,
     uint16_t bufsize) {
+
   (void) instance;
   (void) report_id;
   (void) report_type;
